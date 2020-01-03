@@ -1,0 +1,162 @@
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath "org.jfrog.buildinfo:build-info-extractor-gradle:4.9.8"
+    }
+}
+
+plugins {
+    id 'net.researchgate.release' version '2.6.0'
+    id 'com.jfrog.bintray' version '1.8.4'
+}
+
+apply plugin: 'java-library'
+apply plugin: 'java'
+apply plugin: 'maven'
+apply plugin: 'maven-publish'
+apply plugin: 'jacoco'
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    compile 'com.lemmingapex.trilateration:trilateration:1.0.2'
+    testCompile 'net.steppschuh.markdowngenerator:markdowngenerator:1.3.0.0'
+    testImplementation 'junit:junit:4.12'
+}
+
+sourceCompatibility = "1.7"
+targetCompatibility = "1.7"
+
+def releaseVersionCode = 16
+def releaseVersionName = "0.4.0"
+
+def projectName = 'BLE Indoor Positioning'
+def projectDescription = 'Java library for indoor positioing using bluetooth beacons'
+def projectGroupId = 'com.nexenio.bleindoorpositioning'
+def projectArtifactId = 'core'
+
+def repositoryName = "BLE-Indoor-Positioning"
+def repositoryUrl = "https://github.com/neXenio/${repositoryName}"
+def versionControlUrl = "${repositoryUrl}.git"
+
+bintray {
+    user = project.hasProperty('bintrayUser') ? project.property('bintrayUser') : System.getenv('BINTRAY_USER')
+    key = project.hasProperty('bintrayApiKey') ? project.property('bintrayApiKey') : System.getenv('BINTRAY_API_KEY')
+    publications = ['BintrayPublication']
+    override = true
+    publish = true
+    pkg {
+        repo = repositoryName
+        name = repositoryName
+        userOrg = 'nexenio'
+        licenses = ['Apache-2.0']
+        labels = ['Indoor', 'Positioning', 'Bluetooth', 'Beacon']
+        vcsUrl = versionControlUrl
+        websiteUrl = repositoryUrl
+        version {
+            name = releaseVersionName
+            released = new Date()
+            vcsTag = releaseVersionName
+            gpg {
+                sign = true
+            }
+            mavenCentralSync {
+                sync = true
+                user = project.hasProperty('mavenCentralUser') ? project.property('mavenCentralUser') : System.getenv('MAVEN_CENTRAL_USER')
+                password = project.hasProperty('mavenCentralPassword') ? project.property('mavenCentralPassword') : System.getenv('MAVEN_CENTRAL_PASSWORD')
+                close = '1'
+            }
+        }
+    }
+    filesSpec {
+        from 'build/libs'
+        into 'libs/'
+    }
+}
+
+def pomConfig = {
+    licenses {
+        license {
+            name "The Apache Software License, Version 2.0"
+            url "http://www.apache.org/licenses/LICENSE-2.0.txt"
+            distribution "repo"
+        }
+    }
+    developers {
+        developer {
+            id "neXenio"
+            name "neXenio"
+            email "info@nexenio.com"
+        }
+    }
+    scm {
+        connection repositoryUrl
+        developerConnection repositoryUrl
+        url repositoryUrl
+    }
+}
+
+task sourcesJar(type: Jar) {
+    classifier = 'sources'
+    from sourceSets.main.allJava
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from javadoc.destinationDir
+}
+
+artifacts {
+    archives sourcesJar
+    archives javadocJar
+}
+
+project.afterEvaluate {
+    publishing {
+        publications {
+            mavenJava(MavenPublication) {
+                from components.java
+                groupId projectGroupId
+                artifact sourcesJar
+                artifactId projectArtifactId
+            }
+            BintrayPublication(MavenPublication) {
+                from components.java
+                groupId projectGroupId
+                artifact sourcesJar
+                artifact javadocJar
+                artifactId projectArtifactId
+                version releaseVersionName
+                pom.withXml {
+                    def root = asNode()
+                    root.appendNode('name', projectName)
+                    root.appendNode('description', projectDescription)
+                    root.appendNode('url', repositoryUrl)
+                    root.children().last() + pomConfig
+                }
+            }
+        }
+    }
+}
+
+// configure release plugin. See https://github.com/researchgate/gradle-release#configuration
+release {
+    failOnUnversionedFiles = false
+    failOnCommitNeeded = false
+    git {
+        requireBranch = 'release/publish'
+    }
+}
+
+// deploy artifacts when releasing
+afterReleaseBuild.dependsOn bintrayUpload
+
+jacocoTestReport {
+    reports {
+        xml.enabled true
+        html.enabled false
+    }
+}
+
+check.dependsOn jacocoTestReport
